@@ -44,6 +44,19 @@
         <button id="openReviewFromHome" class="secondary" type="button">Apri “Da rivedere”</button>
         <button id="clearReviewFromHome" class="danger" type="button">Svuota “Da rivedere”</button>
       </div>
+      
+    <div class="panel settingsBox" style="margin-top:14px;">
+      <h3 style="margin:0 0 10px 0;">⚙️ Sessione (Import/Export)</h3>
+      <div class="row">
+        <button id="exportSessionBtn" class="secondary" type="button">⬇️ Esporta sessione</button>
+        <button id="importSessionBtn" class="secondary" type="button">⬆️ Importa sessione</button>
+        <input id="importSessionFile" type="file" accept="application/json" hidden />
+      </div>
+      <p class="muted" style="margin:10px 0 0 0;">
+        iPhone: dopo l’export usa “Condividi → Salva su File → iCloud Drive”.
+      </p>
+    </div>
+      
     </section>
 
     <section id="quizPanel" class="panel" hidden>
