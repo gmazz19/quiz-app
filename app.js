@@ -499,7 +499,9 @@ function finishSimulation(){
   els.simNav.hidden=true;
   els.after.hidden=true;
   els.resultsPanel.hidden=false;
-
+  els.qaWrap.hidden = true;
+  els.resultsPanel.scrollIntoView({ behavior:'smooth', block:'start' });
+  
   els.resultsSummary.innerHTML=`
     <div><strong>Punteggio:</strong> ${total.toFixed(1)} / ${deck.length}</div>
     <div><strong>Risposte date:</strong> ${answeredCount} / ${deck.length}</div>
