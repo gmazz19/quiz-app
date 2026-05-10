@@ -1,13 +1,14 @@
+// v9: adds Consultazione + Favorites. No "da rivedere" integration inside consultazione.
 const REVIEW_KEY = 'quiz_review_ids_v8';
 const SIM_KEY = 'quiz_sim_state_v8';
-
-// NEW: training global memory (seen only after answer)
 const TRAIN_SEEN_KEY = 'quiz_training_seen_v1';
+const FAV_KEY = 'quiz_favorites_v1';
+const CONSULT_STATE_KEY = 'quiz_consult_state_v1';
 
 const $ = (id) => document.getElementById(id);
 const els = {
   homeBtn: $('homeBtn'), timer: $('timer'), datasetInfo: $('datasetInfo'),
-  homePanel: $('homePanel'), goTraining: $('goTraining'), goSimulation: $('goSimulation'), goReview: $('goReview'),
+  homePanel: $('homePanel'), goTraining: $('goTraining'), goSimulation: $('goSimulation'), goReview: $('goReview'), goConsult: $('goConsult'),
   openReviewFromHome: $('openReviewFromHome'), clearReviewFromHome: $('clearReviewFromHome'),
 
   quizPanel: $('quizPanel'), qaWrap: $('qaWrap'), qid: $('qid'), progress: $('progress'), qtext: $('qtext'), answers: $('answers'),
@@ -19,15 +20,23 @@ const els = {
   resultsPanel: $('resultsPanel'), resultsSummary: $('resultsSummary'), resultsBody: $('resultsBody'), newSimBtn: $('newSimBtn'), choiceFilter: $('choiceFilter'),
 
   reviewPanel: $('reviewPanel'), reviewList: $('reviewList'), startReviewModeBtn: $('startReviewModeBtn'),
-  clearReviewBtn2: $('clearReviewBtn2'), closeReviewBtn: $('closeReviewBtn')
+  clearReviewBtn2: $('clearReviewBtn2'), closeReviewBtn: $('closeReviewBtn'),
+
+  consultPanel: $('consultPanel'), closeConsultBtn: $('closeConsultBtn'),
+  consultSearch: $('consultSearch'), consultFavOnly: $('consultFavOnly'),
+  consultListView: $('consultListView'), consultDetailView: $('consultDetailView'),
+  consultCount: $('consultCount'), consultList: $('consultList'),
+  consultBackBtn: $('consultBackBtn'), consultPrevBtn: $('consultPrevBtn'), consultNextBtn: $('consultNextBtn'),
+  consultStarBtn: $('consultStarBtn'), consultDetailPos: $('consultDetailPos'),
+  consultDetailTitle: $('consultDetailTitle'), consultDetailQuestion: $('consultDetailQuestion'),
+  consultEff: $('consultEff'), consultMid: $('consultMid'), consultBad: $('consultBad')
 };
 
 let dataset = null;
-let mode = null; // training | simulation | review
+let mode = null;
 let deck = [];
 let index = 0;
 let answeredThis = false;
-
 // NEW: flag to show completion message exactly once at the end
 let trainingCompletedAllNow = false;
 
@@ -41,9 +50,15 @@ let sim = {
   finished: false,
 };
 
-let resultsView = {
-  rows: [], // full list
-  filterChoice: 'all',
+let resultsView = { rows: [], filterChoice: 'all' };
+
+// Consultazione state
+let consult = {
+  query: '',
+  favOnly: false,
+  selectedId: null,
+  scrollTop: 0,
+  filteredIds: []
 };
 
 function shuffle(arr){
@@ -54,34 +69,13 @@ function shuffle(arr){
   return arr;
 }
 
-function loadReviewSet(){
-  try{ return new Set(JSON.parse(localStorage.getItem(REVIEW_KEY)||'[]')); }
-  catch{ return new Set(); }
-}
-function saveReviewSet(set){
-  const ids=[...set].sort((a,b)=>a-b);
-  localStorage.setItem(REVIEW_KEY, JSON.stringify(ids));
-}
-
-// --- NEW: Training seen persistence (mark as seen only after answer) ---
-function loadTrainingSeen(){
-  try{ return new Set(JSON.parse(localStorage.getItem(TRAIN_SEEN_KEY)||'[]')); }
-  catch{ return new Set(); }
-}
-function saveTrainingSeen(set){
-  const ids=[...set].sort((a,b)=>a-b);
-  localStorage.setItem(TRAIN_SEEN_KEY, JSON.stringify(ids));
-}
-function resetTrainingSeen(){
-  localStorage.removeItem(TRAIN_SEEN_KEY);
-}
-
 function resetPanels(){
   els.homePanel.hidden=true;
   els.quizPanel.hidden=true;
   els.reviewPanel.hidden=true;
   els.resultsPanel.hidden=true;
   els.after.hidden=true;
+  els.consultPanel.hidden=true;
 }
 
 function stopTimer(){
@@ -92,13 +86,12 @@ function stopTimer(){
   els.timer.textContent='';
 }
 
-function showQuestionArea(){ els.qaWrap.hidden=false; }
-function showResultsOnly(){
-  els.qaWrap.hidden=true;
-  els.after.hidden=true;
-  els.simNav.hidden=true;
-  els.resultsPanel.hidden=false;
-  els.resultsPanel.scrollIntoView({behavior:'smooth', block:'start'});
+function ensureDataset(){
+  if(!dataset || !dataset.length){
+    alert('Dataset non caricato. Attendi qualche secondo…');
+    return false;
+  }
+  return true;
 }
 
 function goHome(force=false){
@@ -106,27 +99,55 @@ function goHome(force=false){
     if(!confirm('Vuoi tornare alla Home? La sessione verrà terminata.')) return;
   }
   stopTimer();
-  mode=null; deck=[]; index=0; answeredThis=false;
-  trainingCompletedAllNow = false;
-
-  // Fix: keep the sim shape consistent (timerUiId/autosaveId)
-  sim={
-    perScore:[],
-    perChoice:[],
-    flagged:[],
-    endAt:0,
-    timerUiId:null,
-    autosaveId:null,
-    finished:false
-  };
-
+  mode=null; deck=[]; index=0; answeredThis=false; trainingCompletedAllNow=false;
+  sim={perScore:[],perChoice:[],flagged:[],endAt:0,timerUiId:null,autosaveId:null,finished:false};
   resultsView={rows:[],filterChoice:'all'};
   resetPanels();
   els.homePanel.hidden=false;
   els.qaWrap.hidden=false;
 }
 
-// --- Resume simulation persistence ---
+// ---- Review list (legacy) ----
+function loadReviewSet(){
+  try{ return new Set(JSON.parse(localStorage.getItem(REVIEW_KEY)||'[]')); }
+  catch{ return new Set(); }
+}
+function saveReviewSet(set){
+  const ids=[...set].sort((a,b)=>a-b);
+  localStorage.setItem(REVIEW_KEY, JSON.stringify(ids));
+}
+
+// ---- Training seen ----
+function loadTrainingSeen(){
+  try{ return new Set(JSON.parse(localStorage.getItem(TRAIN_SEEN_KEY)||'[]')); }
+  catch{ return new Set(); }
+}
+function saveTrainingSeen(set){
+  const ids=[...set].sort((a,b)=>a-b);
+  localStorage.setItem(TRAIN_SEEN_KEY, JSON.stringify(ids));
+}
+function resetTrainingSeen(){ localStorage.removeItem(TRAIN_SEEN_KEY); }
+
+// ---- Favorites ----
+function loadFavSet(){
+  try{ return new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]')); }
+  catch{ return new Set(); }
+}
+function saveFavSet(set){
+  localStorage.setItem(FAV_KEY, JSON.stringify([...set].sort((a,b)=>a-b)));
+}
+
+// ---- Consult state persistence ----
+function loadConsultState(){
+  try{ return JSON.parse(localStorage.getItem(CONSULT_STATE_KEY)||'{}') || {}; }
+  catch{ return {}; }
+}
+function saveConsultState(){
+  const state={ query: consult.query, favOnly: consult.favOnly, selectedId: consult.selectedId, scrollTop: consult.scrollTop };
+  localStorage.setItem(CONSULT_STATE_KEY, JSON.stringify(state));
+}
+
+// ---- Simulation resume ----
 function saveSimState(){
   try{
     if(mode!=='simulation' || sim.finished) return;
@@ -141,28 +162,21 @@ function saveSimState(){
       endAt: sim.endAt
     };
     localStorage.setItem(SIM_KEY, JSON.stringify(state));
-  }catch{ /* ignore */ }
+  }catch{}
 }
-
-function clearSimState(){
-  localStorage.removeItem(SIM_KEY);
-}
+function clearSimState(){ localStorage.removeItem(SIM_KEY); }
 
 function tryResumeSimulationPrompt(){
   const raw = localStorage.getItem(SIM_KEY);
   if(!raw || !dataset) return false;
-
   let state=null;
   try{ state=JSON.parse(raw); }catch{ clearSimState(); return false; }
   if(!state || !Array.isArray(state.deckIds) || !state.endAt) { clearSimState(); return false; }
-
-  // timer expired?
   if(Date.now() >= state.endAt){ clearSimState(); return false; }
 
   const ok = confirm('Ho trovato una simulazione in corso. Vuoi riprendere?');
   if(!ok){ clearSimState(); return false; }
 
-  // rebuild deck
   const rebuilt = state.deckIds.map(id => dataset.find(q=>q.id===id)).filter(Boolean);
   if(rebuilt.length !== state.deckIds.length){ clearSimState(); return false; }
 
@@ -182,24 +196,18 @@ function tryResumeSimulationPrompt(){
 
 function startTimerFromEndAt(){
   stopTimer();
-
   const renderTick = () => {
     const left = Math.max(0, Math.floor((sim.endAt - Date.now()) / 1000));
     const mm = String(Math.floor(left / 60)).padStart(2,'0');
     const ss = String(left % 60).padStart(2,'0');
     els.timer.textContent = `⏱️ ${mm}:${ss}`;
-
     if(left === 0 && !sim.finished){
       alert('Tempo scaduto');
       finishSimulation();
     }
   };
-
-  // 1) Timer UI fluido: ogni secondo
   renderTick();
   sim.timerUiId = setInterval(renderTick, 1000);
-
-  // 2) Autosave separato: ogni 5 secondi
   sim.autosaveId = setInterval(() => {
     if(mode === 'simulation' && !sim.finished) saveSimState();
   }, 5000);
@@ -210,29 +218,19 @@ function startTimer(seconds){
   startTimerFromEndAt();
 }
 
-function ensureDataset(){
-  if(!dataset || !dataset.length){
-    alert('Dataset non caricato. Attendi qualche secondo oppure carica domande_297.json manualmente.');
-    return false;
-  }
-  return true;
-}
-
+// ---- Modes ----
 function startTraining(){
   if(!ensureDataset()) return;
-
   mode='training';
-  trainingCompletedAllNow = false;
+  trainingCompletedAllNow=false;
 
   const seen = loadTrainingSeen();
   let unseen = dataset.filter(q => !seen.has(q.id));
-
-  // auto-restart when no unseen
   if(unseen.length === 0){
+    // auto restart
     resetTrainingSeen();
     unseen = dataset.slice();
   }
-
   deck = shuffle(unseen.slice());
   index = 0;
   showQuiz();
@@ -267,7 +265,7 @@ function startReviewMode(){
 function showQuiz(){
   resetPanels();
   els.quizPanel.hidden=false;
-  showQuestionArea();
+  els.qaWrap.hidden=false;
   els.resultsPanel.hidden=true;
   els.after.hidden=true;
   els.simNav.hidden=!(mode==='simulation' && !sim.finished);
@@ -306,7 +304,6 @@ function renderQuestion(){
     els.answers.appendChild(b);
   }
 
-  // In simulation, keep enabled to allow changing before termina
   if(mode==='simulation' && sim.perChoice[index]){
     const chosen=sim.perChoice[index];
     for(const b of els.answers.querySelectorAll('button.answer')){
@@ -348,18 +345,12 @@ function onAnswer(btn,q){
   if(mode==='training' || mode==='review'){
     colorizeAllAnswers();
 
-    // NEW: mark as seen only after answer in TRAINING
-    if(mode === 'training'){
-      const seen = loadTrainingSeen();
-      const wasAlreadySeen = seen.has(q.id);
-      if(!wasAlreadySeen){
+    if(mode==='training'){
+      const seen=loadTrainingSeen();
+      if(!seen.has(q.id)){
         seen.add(q.id);
         saveTrainingSeen(seen);
-
-        // If now all questions are seen, set flag to show message on next click and restart
-        if(seen.size >= dataset.length){
-          trainingCompletedAllNow = true;
-        }
+        if(seen.size >= dataset.length) trainingCompletedAllNow=true;
       }
     }
 
@@ -368,6 +359,7 @@ function onAnswer(btn,q){
       set.add(q.id);
       saveReviewSet(set);
     }
+
     els.after.hidden=false;
     els.simNav.hidden=true;
     els.nextBtn.textContent=(index===deck.length-1)?'Fine':'Prossima';
@@ -384,16 +376,14 @@ function onAnswer(btn,q){
 function nextTrainingLike(){
   if(!answeredThis){ alert('Rispondi prima.'); return; }
 
-  // If we just completed all 297 (after answering last unseen), show message and restart automatically
   if(mode==='training' && index===deck.length-1 && trainingCompletedAllNow){
     alert('Hai completato tutte le 297 domande! Ricomincio da capo.');
-    trainingCompletedAllNow = false;
+    trainingCompletedAllNow=false;
     resetTrainingSeen();
     startTraining();
     return;
   }
 
-  // Auto-restart when finishing the unseen deck (no prompt)
   if(mode==='training' && index===deck.length-1){
     startTraining();
     return;
@@ -455,13 +445,6 @@ function toggleFlag(){
   saveSimState();
 }
 
-function labelChoice(c){
-  if(c==='efficace') return 'Efficace';
-  if(c==='mediamente_efficace') return 'Mediamente efficace';
-  if(c==='non_efficace') return 'Non efficace';
-  return '—';
-}
-
 function buildResultsRows(){
   resultsView.rows = deck.map((q,i)=>({
     pos: i+1,
@@ -471,6 +454,13 @@ function buildResultsRows(){
     flagged: !!sim.flagged[i],
     originalIndex: i
   }));
+}
+
+function labelChoice(c){
+  if(c==='efficace') return 'Efficace';
+  if(c==='mediamente_efficace') return 'Mediamente efficace';
+  if(c==='non_efficace') return 'Non efficace';
+  return '—';
 }
 
 function applyChoiceFilter(){
@@ -502,7 +492,6 @@ function finishSimulation(){
   const answeredCount=sim.perChoice.filter(Boolean).length;
   const flaggedCount=sim.flagged.filter(Boolean).length;
 
-  // Add all non-efficaci to review list
   const set=loadReviewSet();
   for(let i=0;i<deck.length;i++) if(sim.perChoice[i] !== 'efficace') set.add(deck[i].id);
   saveReviewSet(set);
@@ -518,15 +507,15 @@ function finishSimulation(){
   `;
 
   buildResultsRows();
-  resultsView.filterChoice = 'all';
-  els.choiceFilter.value = 'all';
+  resultsView.filterChoice='all';
+  els.choiceFilter.value='all';
   renderResultsTable();
 
   showResultsOnly();
 }
 
 function openSimReview(i){
-  showQuestionArea();
+  els.qaWrap.hidden=false;
   els.resultsPanel.hidden=true;
   els.after.hidden=false;
   els.simNav.hidden=true;
@@ -561,10 +550,8 @@ function openReviewPanel(){
   const set=loadReviewSet();
   const ids=[...set].sort((a,b)=>a-b);
   els.reviewList.innerHTML='';
-  if(!ids.length){
-    els.reviewList.innerHTML='<p>Nessuna domanda in “Da rivedere”.</p>';
-    return;
-  }
+  if(!ids.length){ els.reviewList.innerHTML='<p>Nessuna domanda in “Da rivedere”.</p>'; return; }
+
   ids.forEach(id=>{
     const q=dataset.find(x=>x.id===id);
     const d=document.createElement('details'); d.className='acc';
@@ -581,47 +568,233 @@ function clearReviewAndRefresh(){ clearReview(); if(!els.reviewPanel.hidden) ope
 function addCurrentToReview(){ const q=deck[index]; const s=loadReviewSet(); s.add(q.id); saveReviewSet(s); alert('Aggiunta'); }
 function removeFromReview(){ const q=deck[index]; const s=loadReviewSet(); s.delete(q.id); saveReviewSet(s); alert('Rimossa'); }
 
-// --- Events ---
-els.homeBtn.addEventListener('click',()=>goHome(false));
-els.goTraining.addEventListener('click',startTraining);
-
-// Resume prompt ONLY when clicking "Simulazione"
-els.goSimulation.addEventListener('click',()=>{
+// ---- CONSULTAZIONE ----
+function openConsult(){
   if(!ensureDataset()) return;
+  mode='consult';
+  resetPanels();
+  els.consultPanel.hidden=false;
 
+  // load saved state
+  const st=loadConsultState();
+  consult.query = (st.query||'');
+  consult.favOnly = !!st.favOnly;
+  consult.selectedId = st.selectedId || null;
+  consult.scrollTop = st.scrollTop || 0;
+
+  els.consultSearch.value = consult.query;
+  els.consultFavOnly.checked = consult.favOnly;
+
+  renderConsultList();
+
+  // restore scroll position
+  setTimeout(()=>{ els.consultList.scrollTop = consult.scrollTop; }, 0);
+
+  if(consult.selectedId){
+    // open last selected if it still exists
+    const q = dataset.find(x=>x.id===consult.selectedId);
+    if(q) openConsultDetail(consult.selectedId, false);
+  }
+}
+
+function closeConsult(){
+  // persist current scroll
+  consult.scrollTop = els.consultList.scrollTop || 0;
+  saveConsultState();
+  goHome(true);
+}
+
+function normalize(s){ return (s||'').toLowerCase(); }
+
+function getConsultFilteredIds(){
+  const fav=loadFavSet();
+  const q = normalize(consult.query).trim();
+
+  // base list ordered by id
+  let ids = dataset.map(x=>x.id);
+
+  if(consult.favOnly){
+    ids = ids.filter(id=>fav.has(id));
+  }
+
+  if(!q) return ids;
+
+  const isNum = /^\d+$/.test(q);
+  if(isNum){
+    const needle = parseInt(q,10);
+    // show exact match first if exists, else partial id contains
+    if(ids.includes(needle)) return [needle];
+    return ids.filter(id => String(id).includes(q));
+  }
+
+  // text search: question + answers
+  const out=[];
+  for(const id of ids){
+    const item = dataset[id-1];
+    if(!item) continue;
+    const hay = normalize(item.domanda) + ' ' + normalize(item.risposte?.map(r=>r.testo).join(' ')||'');
+    if(hay.includes(q)) out.push(id);
+  }
+  return out;
+}
+
+function renderConsultList(){
+  consult.filteredIds = getConsultFilteredIds();
+  els.consultCount.textContent = `Mostrate: ${consult.filteredIds.length} / ${dataset.length}`;
+
+  const fav=loadFavSet();
+  els.consultList.innerHTML='';
+
+  for(const id of consult.filteredIds){
+    const q = dataset[id-1];
+    if(!q) continue;
+
+    const row=document.createElement('div');
+    row.className='consultRow';
+
+    const left=document.createElement('div');
+    left.className='consultLeft';
+
+    const idEl=document.createElement('div');
+    idEl.className='consultId';
+    idEl.textContent=String(id);
+
+    const prev=document.createElement('div');
+    prev.className='consultPreview';
+    prev.textContent=q.domanda;
+
+    left.appendChild(idEl);
+    left.appendChild(prev);
+
+    const star=document.createElement('button');
+    star.type='button';
+    star.className='starBtn' + (fav.has(id)?' on':'');
+    star.textContent = fav.has(id)?'★':'☆';
+    star.title = 'Preferito';
+
+    // click row opens detail
+    left.addEventListener('click', ()=> openConsultDetail(id, true));
+
+    // star toggle without opening
+    star.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      toggleFavorite(id);
+      renderConsultList();
+    });
+
+    row.appendChild(left);
+    row.appendChild(star);
+
+    els.consultList.appendChild(row);
+  }
+
+  saveConsultState();
+}
+
+function toggleFavorite(id){
+  const fav=loadFavSet();
+  if(fav.has(id)) fav.delete(id); else fav.add(id);
+  saveFavSet(fav);
+}
+
+function openConsultDetail(id, fromList){
+  consult.selectedId = id;
+  saveConsultState();
+
+  els.consultListView.hidden=true;
+  els.consultDetailView.hidden=false;
+
+  const fav=loadFavSet();
+  els.consultStarBtn.classList.toggle('on', fav.has(id));
+  els.consultStarBtn.textContent = fav.has(id)?'★':'☆';
+
+  const pos = consult.filteredIds.indexOf(id);
+  els.consultDetailPos.textContent = (pos>=0)?`${pos+1} / ${consult.filteredIds.length}`:`ID ${id}`;
+
+  const q = dataset[id-1];
+  els.consultDetailTitle.textContent = `Domanda ${id}`;
+  els.consultDetailQuestion.textContent = q.domanda;
+
+  const eff = q.risposte.find(r=>r.tipo==='efficace')?.testo || '';
+  const mid = q.risposte.find(r=>r.tipo==='mediamente_efficace')?.testo || '';
+  const bad = q.risposte.find(r=>r.tipo==='non_efficace')?.testo || '';
+
+  els.consultEff.textContent = eff;
+  els.consultMid.textContent = mid;
+  els.consultBad.textContent = bad;
+
+  // update star button action
+  els.consultStarBtn.onclick = ()=>{
+    toggleFavorite(id);
+    const fav2=loadFavSet();
+    els.consultStarBtn.classList.toggle('on', fav2.has(id));
+    els.consultStarBtn.textContent = fav2.has(id)?'★':'☆';
+    // If in favOnly mode and user removed favorite, go back to list
+    if(consult.favOnly && !fav2.has(id)){
+      backToConsultList();
+      renderConsultList();
+    }
+  };
+
+  // enable/disable prev/next
+  els.consultPrevBtn.disabled = (pos<=0);
+  els.consultNextBtn.disabled = (pos<0 || pos>=consult.filteredIds.length-1);
+
+  els.consultPrevBtn.onclick = ()=>{
+    const p=consult.filteredIds.indexOf(consult.selectedId);
+    if(p>0) openConsultDetail(consult.filteredIds[p-1], false);
+  };
+  els.consultNextBtn.onclick = ()=>{
+    const p=consult.filteredIds.indexOf(consult.selectedId);
+    if(p>=0 && p<consult.filteredIds.length-1) openConsultDetail(consult.filteredIds[p+1], false);
+  };
+
+  // mobile: go to top
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function backToConsultList(){
+  els.consultDetailView.hidden=true;
+  els.consultListView.hidden=false;
+  // restore scroll
+  setTimeout(()=>{ els.consultList.scrollTop = consult.scrollTop || 0; }, 0);
+}
+
+// ---- events ----
+els.homeBtn.addEventListener('click',()=>goHome(false));
+els.goTraining.addEventListener('click', startTraining);
+els.goSimulation.addEventListener('click', ()=>{
+  if(!ensureDataset()) return;
   const resumed = tryResumeSimulationPrompt();
   if(resumed) return;
-
   startSimulation();
 });
+els.goReview.addEventListener('click', startReviewMode);
+els.goConsult.addEventListener('click', openConsult);
 
-els.goReview.addEventListener('click',startReviewMode);
+els.openReviewFromHome.addEventListener('click', openReviewPanel);
+els.clearReviewFromHome.addEventListener('click', ()=>{ clearReviewAndRefresh(); alert('Svuotata'); });
 
-els.openReviewFromHome.addEventListener('click',openReviewPanel);
-els.clearReviewFromHome.addEventListener('click',()=>{clearReviewAndRefresh(); alert('Svuotata');});
+els.openReviewBtn.addEventListener('click', openReviewPanel);
+els.clearReviewBtn.addEventListener('click', ()=>{ clearReviewAndRefresh(); alert('Svuotata'); });
+els.clearReviewBtn2.addEventListener('click', ()=>{ clearReviewAndRefresh(); alert('Svuotata'); });
+els.closeReviewBtn.addEventListener('click', ()=>goHome(true));
+els.startReviewModeBtn.addEventListener('click', startReviewMode);
 
-els.openReviewBtn.addEventListener('click',openReviewPanel);
-els.clearReviewBtn.addEventListener('click',()=>{clearReviewAndRefresh(); alert('Svuotata');});
-els.clearReviewBtn2.addEventListener('click',()=>{clearReviewAndRefresh(); alert('Svuotata');});
-els.closeReviewBtn.addEventListener('click',()=>goHome(true));
-els.startReviewModeBtn.addEventListener('click',startReviewMode);
+els.addToReviewBtn.addEventListener('click', addCurrentToReview);
+els.removeFromReviewBtn.addEventListener('click', removeFromReview);
+els.backToResultsBtn.addEventListener('click', backToResults);
+els.backToResultsTopBtn.addEventListener('click', backToResults);
 
-els.addToReviewBtn.addEventListener('click',addCurrentToReview);
-els.removeFromReviewBtn.addEventListener('click',removeFromReview);
-
-els.backToResultsBtn.addEventListener('click',backToResults);
-els.backToResultsTopBtn.addEventListener('click',backToResults);
-
-els.nextBtn.addEventListener('click',()=>{
+els.nextBtn.addEventListener('click', ()=>{
   if(mode==='training'||mode==='review') nextTrainingLike();
   else if(mode==='simulation' && sim.finished) backToResults();
 });
 
-els.skipBtn.addEventListener('click',skipSimulation);
-els.flagBtn.addEventListener('click',toggleFlag);
+els.skipBtn.addEventListener('click', skipSimulation);
+els.flagBtn.addEventListener('click', toggleFlag);
 
-// Smart finish confirm
-els.finishBtn.addEventListener('click',()=>{
+els.finishBtn.addEventListener('click', ()=>{
   const unanswered = sim.perChoice.filter(x=>!x).length;
   const flagged = sim.flagged.filter(Boolean).length;
   let msg = 'Terminare la simulazione adesso?';
@@ -632,38 +805,49 @@ els.finishBtn.addEventListener('click',()=>{
   finishSimulation();
 });
 
-els.choiceFilter.addEventListener('change',()=>{
+els.choiceFilter.addEventListener('change', ()=>{
   resultsView.filterChoice = els.choiceFilter.value;
   renderResultsTable();
 });
 
-els.newSimBtn.addEventListener('click',()=>{ clearSimState(); startSimulation(); });
+els.newSimBtn.addEventListener('click', ()=>{ clearSimState(); startSimulation(); });
+
+// Consultazione events
+els.closeConsultBtn.addEventListener('click', closeConsult);
+els.consultBackBtn.addEventListener('click', backToConsultList);
+els.consultSearch.addEventListener('input', ()=>{
+  consult.query = els.consultSearch.value;
+  consult.scrollTop = 0;
+  renderConsultList();
+});
+els.consultFavOnly.addEventListener('change', ()=>{
+  consult.favOnly = els.consultFavOnly.checked;
+  consult.scrollTop = 0;
+  renderConsultList();
+});
+els.consultList.addEventListener('scroll', ()=>{
+  consult.scrollTop = els.consultList.scrollTop || 0;
+  // keep it cheap: save occasionally
+  saveConsultState();
+});
 
 // init
 resetPanels();
 els.homePanel.hidden=false;
 
-// --- Auto-load dataset from GitHub Pages (optional) ---
-// Metti il file "domande_297.json" nella stessa cartella di index.html
+// Auto-load dataset from GitHub Pages
 async function loadDefaultDataset(){
-  if (dataset && dataset.length) return;
-
   try{
     const res = await fetch('domande_297.json', { cache: 'no-store' });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-
     const data = await res.json();
     if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
-
+    // order by id
     dataset = data.sort((a,b)=>a.id-b.id);
-    els.datasetInfo.textContent =
-      `Dataset caricato automaticamente: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
-
-    // No resume prompt here
-
+    els.datasetInfo.textContent = `Dataset caricato automaticamente: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
   }catch(err){
     console.log('Auto-load dataset fallito:', err);
+    els.datasetInfo.textContent = 'Errore caricamento dataset (controlla domande_297.json nel repo).';
   }
 }
-
 loadDefaultDataset();
