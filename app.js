@@ -4,6 +4,8 @@ const TRAIN_SEEN_KEY = 'quiz_training_seen_v1';
 const FAV_KEY = 'quiz_favorites_v1';
 const CONSULT_STATE_KEY = 'quiz_consult_state_v1';
 
+const SESSION_EXPORT_SCHEMA = 'quiz-session-v1';
+
 const $ = (id) => document.getElementById(id);
 const els = {
   homeBtn: $('homeBtn'), timer: $('timer'), datasetInfo: $('datasetInfo'),
@@ -29,7 +31,11 @@ const els = {
   consultBackBtn: $('consultBackBtn'), consultPrevBtn: $('consultPrevBtn'), consultNextBtn: $('consultNextBtn'),
   consultStarBtn: $('consultStarBtn'), consultDetailPos: $('consultDetailPos'),
   consultDetailTitle: $('consultDetailTitle'), consultDetailQuestion: $('consultDetailQuestion'),
-  consultEff: $('consultEff'), consultMid: $('consultMid'), consultBad: $('consultBad')
+  consultEff: $('consultEff'), consultMid: $('consultMid'), consultBad: $('consultBad'),
+
+  exportSessionBtn: $('exportSessionBtn'),
+  importSessionBtn: $('importSessionBtn'),
+  importSessionFile: $('importSessionFile'),
 };
 
 let dataset = null;
@@ -37,7 +43,8 @@ let mode = null;
 let deck = [];
 let index = 0;
 let answeredThis = false;
-// flag to show completion message exactly once at the end
+
+// flag completamento esercitazione (una volta sola)
 let trainingCompletedAllNow = false;
 
 let sim = {
@@ -61,6 +68,9 @@ let consult = {
   filteredIds: []
 };
 
+// ---------------------------
+// Utils
+// ---------------------------
 function shuffle(arr){
   for(let i=arr.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
@@ -86,6 +96,17 @@ function stopTimer(){
   els.timer.textContent = '';
 }
 
+function ensureDataset(){
+  if(!dataset || !dataset.length){
+    alert('Dataset non caricato. Attendi qualche secondo…');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Scroll preciso: porta la pagina a "Domanda XXX" tenendo conto dell'header sticky.
+ */
 function scrollToQuestion(){
   requestAnimationFrame(() => {
     const header = document.querySelector('.appHeader');
@@ -96,22 +117,16 @@ function scrollToQuestion(){
   });
 }
 
+/**
+ * Risultati simulazione: mostra SOLO riepilogo e tabella (nessuna domanda sopra).
+ */
 function showResultsOnly(){
-  // Risultati simulazione: mostra SOLO riepilogo
   els.qaWrap.hidden = true;
   els.after.hidden = true;
   els.simNav.hidden = true;
   if(els.simBottomNav) els.simBottomNav.hidden = true;
   els.resultsPanel.hidden = false;
   els.resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function ensureDataset(){
-  if(!dataset || !dataset.length){
-    alert('Dataset non caricato. Attendi qualche secondo…');
-    return false;
-  }
-  return true;
 }
 
 function goHome(force=false){
@@ -122,14 +137,18 @@ function goHome(force=false){
   mode = null; deck = []; index = 0; answeredThis = false; trainingCompletedAllNow = false;
   sim = { perScore:[], perChoice:[], flagged:[], endAt:0, timerUiId:null, autosaveId:null, finished:false };
   resultsView = { rows:[], filterChoice:'all' };
+
   resetPanels();
   els.homePanel.hidden = false;
   els.qaWrap.hidden = false;
-  // safety: nascondi bottom nav quando non in simulazione
   if(els.simBottomNav) els.simBottomNav.hidden = true;
 }
 
-// ---- Review list (legacy) ----
+// ---------------------------
+// LocalStorage helpers
+// ---------------------------
+
+// Review list
 function loadReviewSet(){
   try{ return new Set(JSON.parse(localStorage.getItem(REVIEW_KEY)||'[]')); }
   catch{ return new Set(); }
@@ -139,7 +158,7 @@ function saveReviewSet(set){
   localStorage.setItem(REVIEW_KEY, JSON.stringify(ids));
 }
 
-// ---- Training seen ----
+// Training seen
 function loadTrainingSeen(){
   try{ return new Set(JSON.parse(localStorage.getItem(TRAIN_SEEN_KEY)||'[]')); }
   catch{ return new Set(); }
@@ -150,7 +169,7 @@ function saveTrainingSeen(set){
 }
 function resetTrainingSeen(){ localStorage.removeItem(TRAIN_SEEN_KEY); }
 
-// ---- Favorites ----
+// Favorites
 function loadFavSet(){
   try{ return new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]')); }
   catch{ return new Set(); }
@@ -159,7 +178,7 @@ function saveFavSet(set){
   localStorage.setItem(FAV_KEY, JSON.stringify([...set].sort((a,b)=>a-b)));
 }
 
-// ---- Consult state persistence ----
+// Consult state
 function loadConsultState(){
   try{ return JSON.parse(localStorage.getItem(CONSULT_STATE_KEY)||'{}') || {}; }
   catch{ return {}; }
@@ -169,7 +188,9 @@ function saveConsultState(){
   localStorage.setItem(CONSULT_STATE_KEY, JSON.stringify(state));
 }
 
-// ---- Simulation resume ----
+// ---------------------------
+// Simulazione: Resume
+// ---------------------------
 function saveSimState(){
   try{
     if(mode!=='simulation' || sim.finished) return;
@@ -191,8 +212,10 @@ function clearSimState(){ localStorage.removeItem(SIM_KEY); }
 function tryResumeSimulationPrompt(){
   const raw = localStorage.getItem(SIM_KEY);
   if(!raw || !dataset) return false;
+
   let state=null;
   try{ state=JSON.parse(raw); }catch{ clearSimState(); return false; }
+
   if(!state || !Array.isArray(state.deckIds) || !state.endAt) { clearSimState(); return false; }
   if(Date.now() >= state.endAt){ clearSimState(); return false; }
 
@@ -218,18 +241,22 @@ function tryResumeSimulationPrompt(){
 
 function startTimerFromEndAt(){
   stopTimer();
+
   const renderTick = () => {
     const left = Math.max(0, Math.floor((sim.endAt - Date.now()) / 1000));
     const mm = String(Math.floor(left / 60)).padStart(2,'0');
     const ss = String(left % 60).padStart(2,'0');
     els.timer.textContent = `⏱️ ${mm}:${ss}`;
+
     if(left === 0 && !sim.finished){
       alert('Tempo scaduto');
       finishSimulation();
     }
   };
+
   renderTick();
   sim.timerUiId = setInterval(renderTick, 1000);
+
   sim.autosaveId = setInterval(() => {
     if(mode === 'simulation' && !sim.finished) saveSimState();
   }, 5000);
@@ -240,7 +267,9 @@ function startTimer(seconds){
   startTimerFromEndAt();
 }
 
-// ---- Modes ----
+// ---------------------------
+// Modes
+// ---------------------------
 function startTraining(){
   if(!ensureDataset()) return;
   mode='training';
@@ -249,7 +278,6 @@ function startTraining(){
   const seen = loadTrainingSeen();
   let unseen = dataset.filter(q => !seen.has(q.id));
   if(unseen.length === 0){
-    // auto restart
     resetTrainingSeen();
     unseen = dataset.slice();
   }
@@ -261,13 +289,16 @@ function startTraining(){
 function startSimulation(){
   if(!ensureDataset()) return;
   mode='simulation';
+
   const n=Math.min(30, dataset.length);
   deck=shuffle(dataset.slice()).slice(0,n);
+
   index=0;
   sim.perScore=new Array(deck.length).fill(null);
   sim.perChoice=new Array(deck.length).fill(null);
   sim.flagged=new Array(deck.length).fill(false);
   sim.finished=false;
+
   startTimer(90*60);
   saveSimState();
   showQuiz();
@@ -278,6 +309,7 @@ function startReviewMode(){
   const set=loadReviewSet();
   const only=dataset.filter(q=>set.has(q.id));
   if(!only.length){ alert('“Da rivedere” è vuota.'); return; }
+
   mode='review';
   deck=shuffle(only.slice());
   index=0;
@@ -288,14 +320,10 @@ function showQuiz(){
   resetPanels();
   els.quizPanel.hidden=false;
 
-  // quando si entra in quiz, si vede la domanda
   els.qaWrap.hidden=false;
-
-  // risultati sempre nascosti finché non termini
   els.resultsPanel.hidden=true;
   els.after.hidden=true;
 
-  // sim nav / bottom nav solo in simulazione non finita
   const simActive = (mode === 'simulation' && !sim.finished);
   els.simNav.hidden = !simActive;
   if(els.simBottomNav) els.simBottomNav.hidden = !simActive;
@@ -336,6 +364,7 @@ function renderQuestion(){
     els.answers.appendChild(b);
   }
 
+  // evidenzia scelta già fatta in simulazione
   if(mode==='simulation' && sim.perChoice[index]){
     const chosen=sim.perChoice[index];
     for(const b of els.answers.querySelectorAll('button.answer')){
@@ -345,7 +374,7 @@ function renderQuestion(){
 
   updateNavGridStyles();
 
-  // abilita/disabilita prev/next in simulazione
+  // prev/next abilitazione
   if(mode === 'simulation' && !sim.finished && els.simPrevBtn && els.simNextBtn){
     els.simPrevBtn.disabled = (index === 0);
     els.simNextBtn.disabled = (index === deck.length - 1);
@@ -444,6 +473,7 @@ function buildNavGrid(){
     els.navGrid.innerHTML='';
     return;
   }
+
   els.navGrid.innerHTML='';
   for(let i=0;i<deck.length;i++){
     const b=document.createElement('button');
@@ -463,6 +493,7 @@ function buildNavGrid(){
 
 function updateNavGridStyles(){
   if(!(mode==='simulation' && !sim.finished)) return;
+
   const nodes=[...els.navGrid.querySelectorAll('button.navItem')];
   nodes.forEach((b,i)=>{
     b.classList.remove('current','answered','flagged');
@@ -515,6 +546,9 @@ function toggleFlag(){
   saveSimState();
 }
 
+// ---------------------------
+// Risultati simulazione
+// ---------------------------
 function buildResultsRows(){
   resultsView.rows = deck.map((q,i)=>({
     pos: i+1,
@@ -545,7 +579,13 @@ function renderResultsTable(){
   els.resultsBody.innerHTML='';
   for(const r of filtered){
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${r.pos}</td><td>${r.id}</td><td>${labelChoice(r.choice)}</td><td>${r.score==null?'—':r.score.toFixed(1)}</td><td style="text-align:center;">${r.flagged?'🔖':''}</td><td><button class="linkBtn" data-i="${r.originalIndex}">Apri</button></td>`;
+    tr.innerHTML =
+      `<td>${r.pos}</td>`+
+      `<td>${r.id}</td>`+
+      `<td>${labelChoice(r.choice)}</td>`+
+      `<td>${r.score==null?'—':r.score.toFixed(1)}</td>`+
+      `<td style="text-align:center;">${r.flagged?'🔖':''}</td>`+
+      `<td><button class="linkBtn" data-i="${r.originalIndex}">Apri</button></td>`;
     els.resultsBody.appendChild(tr);
   }
   els.resultsBody.querySelectorAll('button.linkBtn').forEach(btn=>{
@@ -564,6 +604,7 @@ function finishSimulation(){
   const answeredCount=sim.perChoice.filter(Boolean).length;
   const flaggedCount=sim.flagged.filter(Boolean).length;
 
+  // aggiorna review list (legacy) con non efficaci
   const set=loadReviewSet();
   for(let i=0;i<deck.length;i++) if(sim.perChoice[i] !== 'efficace') set.add(deck[i].id);
   saveReviewSet(set);
@@ -617,6 +658,9 @@ function backToResults(){
   showResultsOnly();
 }
 
+// ---------------------------
+// Review panel (legacy)
+// ---------------------------
 function openReviewPanel(){
   if(!ensureDataset()) return;
   resetPanels();
@@ -643,7 +687,9 @@ function clearReviewAndRefresh(){ clearReview(); if(!els.reviewPanel.hidden) ope
 function addCurrentToReview(){ const q=deck[index]; const s=loadReviewSet(); s.add(q.id); saveReviewSet(s); alert('Aggiunta'); }
 function removeFromReview(){ const q=deck[index]; const s=loadReviewSet(); s.delete(q.id); saveReviewSet(s); alert('Rimossa'); }
 
-// ---- CONSULTAZIONE ----
+// ---------------------------
+// CONSULTAZIONE
+// ---------------------------
 function openConsult(){
   if(!ensureDataset()) return;
   mode='consult';
@@ -664,7 +710,7 @@ function openConsult(){
 
   if(consult.selectedId){
     const q = dataset.find(x=>x.id===consult.selectedId);
-    if(q) openConsultDetail(consult.selectedId, false);
+    if(q) openConsultDetail(consult.selectedId);
   }
 }
 
@@ -737,7 +783,7 @@ function renderConsultList(){
     star.textContent = fav.has(id)?'★':'☆';
     star.title = 'Preferito';
 
-    left.addEventListener('click', ()=> openConsultDetail(id, true));
+    left.addEventListener('click', ()=> openConsultDetail(id));
     star.addEventListener('click', (e)=>{
       e.stopPropagation();
       toggleFavorite(id);
@@ -816,8 +862,97 @@ function backToConsultList(){
   setTimeout(()=>{ els.consultList.scrollTop = consult.scrollTop || 0; }, 0);
 }
 
-// ---- events ----
+// ---------------------------
+// Import/Export Sessione
+// ---------------------------
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+function buildTimestamp(){
+  // Locale: YYYYMMDD-HHMMSS
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth()+1);
+  const day = pad2(d.getDate());
+  const hh = pad2(d.getHours());
+  const mm = pad2(d.getMinutes());
+  const ss = pad2(d.getSeconds());
+  return `${y}${m}${day}-${hh}${mm}${ss}`;
+}
+
+function buildExportPayload(){
+  // Esportiamo SOLO le chiavi note (evitiamo roba estranea)
+  const keys = [REVIEW_KEY, TRAIN_SEEN_KEY, FAV_KEY, CONSULT_STATE_KEY, SIM_KEY];
+
+  const storage = {};
+  for(const k of keys){
+    // manteniamo la stringa originale (già JSON) per ripristino fedele
+    const v = localStorage.getItem(k);
+    storage[k] = (v === null ? null : v);
+  }
+
+  return {
+    meta: {
+      schema: SESSION_EXPORT_SCHEMA,
+      exportedAt: new Date().toISOString(),
+    },
+    storage
+  };
+}
+
+function applyImportPayload(payload){
+  if(!payload || !payload.meta || payload.meta.schema !== SESSION_EXPORT_SCHEMA || !payload.storage){
+    throw new Error('Formato file non valido.');
+  }
+
+  const keys = [REVIEW_KEY, TRAIN_SEEN_KEY, FAV_KEY, CONSULT_STATE_KEY, SIM_KEY];
+  for(const k of keys){
+    const v = payload.storage[k];
+    if(v === null || v === undefined){
+      localStorage.removeItem(k);
+    }else{
+      localStorage.setItem(k, v);
+    }
+  }
+}
+
+async function shareOrDownloadJson(jsonText, fileName){
+  const blob = new Blob([jsonText], { type: 'application/json' });
+  const file = new File([blob], fileName, { type: 'application/json' });
+
+  // 1) Tenta share sheet (iPhone/iPad/macOS Safari/Chrome) se supportato
+  try{
+    if(navigator.canShare && navigator.share){
+      const data = { files: [file] };
+      if(navigator.canShare(data)){
+        await navigator.share({ files: [file], title: 'Sessione Quiz' });
+        return;
+      }
+    }
+  }catch(e){
+    // se fallisce o annullato, fallback download
+  }
+
+  // 2) Fallback download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 1000);
+
+  alert('Sessione esportata. Su iPhone: apri File → Download e usa Condividi → Salva su File → iCloud Drive.');
+}
+
+// ---------------------------
+// Events
+// ---------------------------
 els.homeBtn.addEventListener('click',()=>goHome(false));
+
 els.goTraining.addEventListener('click', startTraining);
 els.goSimulation.addEventListener('click', ()=>{
   if(!ensureDataset()) return;
@@ -888,6 +1023,40 @@ els.consultList.addEventListener('scroll', ()=>{
   consult.scrollTop = els.consultList.scrollTop || 0;
   saveConsultState();
 });
+
+// Import/Export events (solo se presenti in DOM)
+if(els.exportSessionBtn){
+  els.exportSessionBtn.addEventListener('click', async ()=>{
+    const payload = buildExportPayload();
+    const ts = buildTimestamp();
+    const fileName = `quiz-session-${ts}.json`;
+    const jsonText = JSON.stringify(payload, null, 2);
+    await shareOrDownloadJson(jsonText, fileName);
+  });
+}
+if(els.importSessionBtn && els.importSessionFile){
+  els.importSessionBtn.addEventListener('click', ()=> els.importSessionFile.click());
+  els.importSessionFile.addEventListener('change', async (e)=>{
+    const file = e.target.files?.[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const payload = JSON.parse(text);
+
+      const ok = confirm('Importare questa sessione sovrascrivendo lo stato attuale?');
+      if(!ok) return;
+
+      applyImportPayload(payload);
+
+      alert('Sessione importata. Ricarico la pagina…');
+      location.reload();
+    }catch(err){
+      alert('Errore import sessione: ' + err.message);
+    }finally{
+      e.target.value = '';
+    }
+  });
+}
 
 // init
 resetPanels();
