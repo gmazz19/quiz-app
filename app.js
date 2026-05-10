@@ -182,7 +182,7 @@ function startTimer(seconds){
 
 function ensureDataset(){
   if(!dataset || !dataset.length){
-    alert('Carica prima domande_297_corretto.json');
+    alert('Dataset non caricato. Attendi qualche secondo oppure carica domande_297.json manualmente.');
     return false;
   }
   return true;
@@ -568,3 +568,34 @@ els.fileInput.addEventListener('change', async (e)=>{
 // init
 resetPanels();
 els.homePanel.hidden=false;
+
+// --- Auto-load dataset from GitHub Pages (optional) ---
+// Metti il file "domande_297.json" nella stessa cartella di index.html
+async function loadDefaultDataset(){
+  // Se dataset è già stato caricato manualmente, non fare nulla
+  if (dataset && dataset.length) return;
+
+  try{
+    const res = await fetch('domande_297.json', { cache: 'no-store' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
+
+    dataset = data.sort((a,b)=>a.id-b.id);
+    els.datasetInfo.textContent =
+      `Dataset caricato automaticamente: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
+
+    // Dopo il load automatico, se c'è una simulazione salvata propone il resume
+    tryResumeSimulationPrompt();
+
+  }catch(err){
+    console.log('Auto-load dataset fallito:', err);
+    // Non blocchiamo nulla: l’utente può comunque caricare manualmente dal bottone file
+    // (opzionale) puoi mostrare un hint:
+    // els.datasetInfo.textContent = 'Carica domande_297.json (auto-load non riuscito).';
+  }
+}
+
+// Avvia auto-load all’avvio
+loadDefaultDataset();
