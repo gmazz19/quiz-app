@@ -6,7 +6,7 @@ const TRAIN_SEEN_KEY = 'quiz_training_seen_v1';
 
 const $ = (id) => document.getElementById(id);
 const els = {
-  homeBtn: $('homeBtn'), timer: $('timer'), fileInput: $('fileInput'), datasetInfo: $('datasetInfo'),
+  homeBtn: $('homeBtn'), timer: $('timer'), datasetInfo: $('datasetInfo'),
   homePanel: $('homePanel'), goTraining: $('goTraining'), goSimulation: $('goSimulation'), goReview: $('goReview'),
   openReviewFromHome: $('openReviewFromHome'), clearReviewFromHome: $('clearReviewFromHome'),
 
@@ -638,22 +638,6 @@ els.choiceFilter.addEventListener('change',()=>{
 });
 
 els.newSimBtn.addEventListener('click',()=>{ clearSimState(); startSimulation(); });
-
-els.fileInput.addEventListener('change', async (e)=>{
-  const file=e.target.files?.[0];
-  if(!file) return;
-  const text=await file.text();
-  try{
-    const data=JSON.parse(text);
-    if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
-    dataset=data.sort((a,b)=>a.id-b.id);
-    els.datasetInfo.textContent=`Dataset caricato: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
-    // No resume prompt here
-    if(!els.reviewPanel.hidden) openReviewPanel();
-  }catch(err){
-    alert('Errore nel JSON: '+err.message);
-  }
-});
 
 // init
 resetPanels();
