@@ -149,3 +149,8 @@ button.ghost{background:transparent;border:1px solid var(--border);color:var(--t
 .simBottomNav button{
   flex:1;
 }
+
+.settingsBox{
+  background: rgba(34,52,95,.25);
+  border: 1px solid var(--border);
+}
