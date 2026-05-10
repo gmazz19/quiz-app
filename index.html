@@ -14,9 +14,10 @@
       <div class="timer" id="timer" aria-live="polite"></div>
     </div>
 
-  <div class="subRow">
-    <span id="datasetInfo" class="muted">Caricamento dataset…</span>
-  </div>
+    <div class="subRow">
+      <span id="datasetInfo" class="muted">Caricamento dataset…</span>
+    </div>
+  </header>
 
   <main class="container">
     <section id="homePanel" class="panel">
@@ -24,7 +25,7 @@
       <div class="modeGrid">
         <button id="goTraining" class="modeCard" type="button">
           <div class="modeTitle">Esercitazione</div>
-          <div class="modeDesc">Tutte le 297 domande una volta. Esito subito dopo la risposta.</div>
+          <div class="modeDesc">Tutte le 297 domande senza ripetizioni finché non rispondi a tutte.</div>
         </button>
         <button id="goSimulation" class="modeCard" type="button">
           <div class="modeTitle">Simulazione</div>
@@ -33,6 +34,10 @@
         <button id="goReview" class="modeCard" type="button">
           <div class="modeTitle">Ripasso</div>
           <div class="modeDesc">Solo “Da rivedere”. Esito subito dopo la risposta.</div>
+        </button>
+        <button id="goConsult" class="modeCard" type="button">
+          <div class="modeTitle">Consultazione</div>
+          <div class="modeDesc">Libreria: sfoglia tutte le domande e studia le risposte.</div>
         </button>
       </div>
       <div class="row" style="margin-top:14px;">
@@ -44,7 +49,6 @@
     <section id="quizPanel" class="panel" hidden>
       <div id="qaWrap">
 
-        <!-- Sim nav on top in simulation -->
         <div id="simNav" class="simNav" hidden>
           <div class="simNavTop">
             <button id="skipBtn" class="secondary" type="button">Salta</button>
@@ -123,6 +127,64 @@
       </div>
       <div id="reviewList"></div>
     </section>
+
+    <!-- CONSULTAZIONE -->
+    <section id="consultPanel" class="panel" hidden>
+      <div class="consultHeader">
+        <div class="row" style="justify-content:space-between; width:100%">
+          <h2 style="margin:0">Consultazione</h2>
+          <button id="closeConsultBtn" class="secondary" type="button">Chiudi</button>
+        </div>
+        <div class="consultControls">
+          <input id="consultSearch" class="input" type="search" placeholder="Cerca per ID o testo…" />
+          <label class="toggle">
+            <input id="consultFavOnly" type="checkbox" />
+            <span>Solo ⭐</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="consultListView" class="consultListView">
+        <div id="consultCount" class="muted" style="margin:8px 0"></div>
+        <div id="consultList" class="consultList" aria-label="Elenco domande"></div>
+      </div>
+
+      <div id="consultDetailView" class="consultDetailView" hidden>
+        <div class="consultDetailTop">
+          <button id="consultBackBtn" class="secondary" type="button">← Lista</button>
+          <div class="consultDetailMeta">
+            <div id="consultDetailPos" class="muted"></div>
+            <button id="consultStarBtn" class="starBtn" type="button" title="Preferito">☆</button>
+          </div>
+        </div>
+
+        <div class="consultDetailBody">
+          <div id="consultDetailTitle" class="consultDetailTitle"></div>
+          <div id="consultDetailQuestion" class="consultDetailQuestion"></div>
+
+          <div class="consultAnswers">
+            <div class="consultAnswer ok">
+              <div class="consultAnswerHdr">✅ Efficace (1)</div>
+              <div id="consultEff" class="consultAnswerTxt"></div>
+            </div>
+            <div class="consultAnswer mid">
+              <div class="consultAnswerHdr">🟡 Mediamente efficace (0,5)</div>
+              <div id="consultMid" class="consultAnswerTxt"></div>
+            </div>
+            <div class="consultAnswer bad">
+              <div class="consultAnswerHdr">🔴 Non efficace (0)</div>
+              <div id="consultBad" class="consultAnswerTxt"></div>
+            </div>
+          </div>
+
+          <div class="consultNav">
+            <button id="consultPrevBtn" class="secondary" type="button">← Precedente</button>
+            <button id="consultNextBtn" class="secondary" type="button">Successiva →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <footer class="footer"><p class="muted">Forza Robertaaaaa</p></footer>
