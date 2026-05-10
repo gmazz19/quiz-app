@@ -87,8 +87,13 @@ function stopTimer(){
 }
 
 function scrollToQuestion(){
-  // scroll pulito verso la domanda (qid è sopra il testo)
-  els.qid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  requestAnimationFrame(() => {
+    const header = document.querySelector('.appHeader');
+    const headerH = header ? header.offsetHeight : 0;
+    const y = els.qid.getBoundingClientRect().top + window.pageYOffset;
+    const target = Math.max(0, y - headerH - 8);
+    window.scrollTo({ top: target, behavior: 'smooth' });
+  });
 }
 
 function showResultsOnly(){
