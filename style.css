@@ -20,16 +20,17 @@ button.danger{background:#7a1f1f;border:1px solid #b35a5a;color:white;padding:10
 button.ghost{background:transparent;border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:10px}
 .timer{font-variant-numeric:tabular-nums;font-weight:800;text-align:right}
 
-/* FIX: width/max-width garantiscono che la grid non sfori mai */
 .modeGrid{
   display:grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;   /* elenco su mobile */
   gap:12px;
   margin-top:12px;
   width:100%;
   max-width:100%;
 }
-@media(min-width:900px){.modeGrid{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:900px){
+  .modeGrid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 
 /* FIX: anche la card non deve poter “allargarsi” oltre la cella */
 .modeCard{
