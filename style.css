@@ -137,3 +137,15 @@ button.ghost{background:transparent;border:1px solid var(--border);color:var(--t
 .consultAnswerHdr{font-weight:900;margin-bottom:6px}
 .consultAnswerTxt{white-space:pre-wrap;line-height:1.5}
 .consultNav{display:flex;justify-content:space-between;gap:10px;margin-top:14px}
+
+/* Simulazione: navigazione in basso */
+.simBottomNav{
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  margin-top:12px;
+}
+
+.simBottomNav button{
+  flex:1;
+}
