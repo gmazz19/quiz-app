@@ -1,6 +1,8 @@
-// v8: Smart finish confirm + Resume simulation prompt + Choice filter (no spaced repetition)
 const REVIEW_KEY = 'quiz_review_ids_v8';
 const SIM_KEY = 'quiz_sim_state_v8';
+
+// NEW: training global memory (seen only after answer)
+const TRAIN_SEEN_KEY = 'quiz_training_seen_v1';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -25,6 +27,9 @@ let mode = null; // training | simulation | review
 let deck = [];
 let index = 0;
 let answeredThis = false;
+
+// NEW: flag to show completion message exactly once at the end
+let trainingCompletedAllNow = false;
 
 let sim = {
   perScore: [],
@@ -58,6 +63,19 @@ function saveReviewSet(set){
   localStorage.setItem(REVIEW_KEY, JSON.stringify(ids));
 }
 
+// --- NEW: Training seen persistence (mark as seen only after answer) ---
+function loadTrainingSeen(){
+  try{ return new Set(JSON.parse(localStorage.getItem(TRAIN_SEEN_KEY)||'[]')); }
+  catch{ return new Set(); }
+}
+function saveTrainingSeen(set){
+  const ids=[...set].sort((a,b)=>a-b);
+  localStorage.setItem(TRAIN_SEEN_KEY, JSON.stringify(ids));
+}
+function resetTrainingSeen(){
+  localStorage.removeItem(TRAIN_SEEN_KEY);
+}
+
 function resetPanels(){
   els.homePanel.hidden=true;
   els.quizPanel.hidden=true;
@@ -89,7 +107,19 @@ function goHome(force=false){
   }
   stopTimer();
   mode=null; deck=[]; index=0; answeredThis=false;
-  sim={perScore:[],perChoice:[],flagged:[],endAt:0,timerId:null,finished:false};
+  trainingCompletedAllNow = false;
+
+  // Fix: keep the sim shape consistent (timerUiId/autosaveId)
+  sim={
+    perScore:[],
+    perChoice:[],
+    flagged:[],
+    endAt:0,
+    timerUiId:null,
+    autosaveId:null,
+    finished:false
+  };
+
   resultsView={rows:[],filterChoice:'all'};
   resetPanels();
   els.homePanel.hidden=false;
@@ -190,9 +220,21 @@ function ensureDataset(){
 
 function startTraining(){
   if(!ensureDataset()) return;
+
   mode='training';
-  deck=shuffle(dataset.slice());
-  index=0;
+  trainingCompletedAllNow = false;
+
+  const seen = loadTrainingSeen();
+  let unseen = dataset.filter(q => !seen.has(q.id));
+
+  // auto-restart when no unseen
+  if(unseen.length === 0){
+    resetTrainingSeen();
+    unseen = dataset.slice();
+  }
+
+  deck = shuffle(unseen.slice());
+  index = 0;
   showQuiz();
 }
 
@@ -305,6 +347,22 @@ function onAnswer(btn,q){
 
   if(mode==='training' || mode==='review'){
     colorizeAllAnswers();
+
+    // NEW: mark as seen only after answer in TRAINING
+    if(mode === 'training'){
+      const seen = loadTrainingSeen();
+      const wasAlreadySeen = seen.has(q.id);
+      if(!wasAlreadySeen){
+        seen.add(q.id);
+        saveTrainingSeen(seen);
+
+        // If now all questions are seen, set flag to show message on next click and restart
+        if(seen.size >= dataset.length){
+          trainingCompletedAllNow = true;
+        }
+      }
+    }
+
     if(tipo!=='efficace'){
       const set=loadReviewSet();
       set.add(q.id);
@@ -325,8 +383,30 @@ function onAnswer(btn,q){
 
 function nextTrainingLike(){
   if(!answeredThis){ alert('Rispondi prima.'); return; }
-  if(index===deck.length-1){ goHome(true); alert('Fine giro.'); return; }
-  index+=1; renderQuestion();
+
+  // If we just completed all 297 (after answering last unseen), show message and restart automatically
+  if(mode==='training' && index===deck.length-1 && trainingCompletedAllNow){
+    alert('Hai completato tutte le 297 domande! Ricomincio da capo.');
+    trainingCompletedAllNow = false;
+    resetTrainingSeen();
+    startTraining();
+    return;
+  }
+
+  // Auto-restart when finishing the unseen deck (no prompt)
+  if(mode==='training' && index===deck.length-1){
+    startTraining();
+    return;
+  }
+
+  if(index===deck.length-1){
+    goHome(true);
+    alert('Fine giro.');
+    return;
+  }
+
+  index+=1;
+  renderQuestion();
 }
 
 function buildNavGrid(){
@@ -499,20 +579,20 @@ function openReviewPanel(){
 function clearReview(){ if(!confirm('Vuoi davvero svuotare “Da rivedere”?')) return; localStorage.removeItem(REVIEW_KEY); }
 function clearReviewAndRefresh(){ clearReview(); if(!els.reviewPanel.hidden) openReviewPanel(); }
 function addCurrentToReview(){ const q=deck[index]; const s=loadReviewSet(); s.add(q.id); saveReviewSet(s); alert('Aggiunta'); }
-function removeCurrentFromReview(){ const q=deck[index]; const s=loadReviewSet(); s.delete(q.id); saveReviewSet(s); alert('Rimossa'); }
+function removeFromReview(){ const q=deck[index]; const s=loadReviewSet(); s.delete(q.id); saveReviewSet(s); alert('Rimossa'); }
 
 // --- Events ---
 els.homeBtn.addEventListener('click',()=>goHome(false));
 els.goTraining.addEventListener('click',startTraining);
 
-// ✅ MODIFICA: prompt resume SOLO al click su "Simulazione"
+// Resume prompt ONLY when clicking "Simulazione"
 els.goSimulation.addEventListener('click',()=>{
   if(!ensureDataset()) return;
 
   const resumed = tryResumeSimulationPrompt();
-  if(resumed) return; // ripresa completata, non avvia nuova simulazione
+  if(resumed) return;
 
-  startSimulation(); // altrimenti nuova simulazione
+  startSimulation();
 });
 
 els.goReview.addEventListener('click',startReviewMode);
@@ -527,7 +607,8 @@ els.closeReviewBtn.addEventListener('click',()=>goHome(true));
 els.startReviewModeBtn.addEventListener('click',startReviewMode);
 
 els.addToReviewBtn.addEventListener('click',addCurrentToReview);
-els.removeFromReviewBtn.addEventListener('click',removeCurrentFromReview);
+els.removeFromReviewBtn.addEventListener('click',removeFromReview);
+
 els.backToResultsBtn.addEventListener('click',backToResults);
 els.backToResultsTopBtn.addEventListener('click',backToResults);
 
@@ -567,7 +648,7 @@ els.fileInput.addEventListener('change', async (e)=>{
     if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
     dataset=data.sort((a,b)=>a.id-b.id);
     els.datasetInfo.textContent=`Dataset caricato: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
-    // ✅ MODIFICA: NON chiedere resume qui
+    // No resume prompt here
     if(!els.reviewPanel.hidden) openReviewPanel();
   }catch(err){
     alert('Errore nel JSON: '+err.message);
@@ -581,7 +662,6 @@ els.homePanel.hidden=false;
 // --- Auto-load dataset from GitHub Pages (optional) ---
 // Metti il file "domande_297.json" nella stessa cartella di index.html
 async function loadDefaultDataset(){
-  // Se dataset è già stato caricato manualmente, non fare nulla
   if (dataset && dataset.length) return;
 
   try{
@@ -595,13 +675,11 @@ async function loadDefaultDataset(){
     els.datasetInfo.textContent =
       `Dataset caricato automaticamente: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
 
-    // ✅ MODIFICA: NON chiedere resume qui
+    // No resume prompt here
 
   }catch(err){
     console.log('Auto-load dataset fallito:', err);
-    // Non blocchiamo nulla: l’utente può comunque caricare manualmente dal bottone file
   }
 }
 
-// Avvia auto-load all’avvio
 loadDefaultDataset();
