@@ -1,4 +1,3 @@
-// v9: adds Consultazione + Favorites. No "da rivedere" integration inside consultazione.
 const REVIEW_KEY = 'quiz_review_ids_v8';
 const SIM_KEY = 'quiz_sim_state_v8';
 const TRAIN_SEEN_KEY = 'quiz_training_seen_v1';
@@ -12,7 +11,8 @@ const els = {
   openReviewFromHome: $('openReviewFromHome'), clearReviewFromHome: $('clearReviewFromHome'),
 
   quizPanel: $('quizPanel'), qaWrap: $('qaWrap'), qid: $('qid'), progress: $('progress'), qtext: $('qtext'), answers: $('answers'),
-  simNav: $('simNav'), skipBtn: $('skipBtn'), flagBtn: $('flagBtn'), finishBtn: $('finishBtn'), navGrid: $('navGrid'), navHint: $('navHint'),
+  simNav: $('simNav'), simBottomNav: $('simBottomNav'), simPrevBtn: $('simPrevBtn'), simNextBtn: $('simNextBtn'),
+  skipBtn: $('skipBtn'), flagBtn: $('flagBtn'), finishBtn: $('finishBtn'), navGrid: $('navGrid'), navHint: $('navHint'),
 
   after: $('after'), backToResultsBtn: $('backToResultsBtn'), backToResultsTopBtn: $('backToResultsTopBtn'), nextBtn: $('nextBtn'),
   addToReviewBtn: $('addToReviewBtn'), removeFromReviewBtn: $('removeFromReviewBtn'), openReviewBtn: $('openReviewBtn'), clearReviewBtn: $('clearReviewBtn'),
@@ -37,7 +37,7 @@ let mode = null;
 let deck = [];
 let index = 0;
 let answeredThis = false;
-// NEW: flag to show completion message exactly once at the end
+// flag to show completion message exactly once at the end
 let trainingCompletedAllNow = false;
 
 let sim = {
@@ -70,20 +70,35 @@ function shuffle(arr){
 }
 
 function resetPanels(){
-  els.homePanel.hidden=true;
-  els.quizPanel.hidden=true;
-  els.reviewPanel.hidden=true;
-  els.resultsPanel.hidden=true;
-  els.after.hidden=true;
-  els.consultPanel.hidden=true;
+  els.homePanel.hidden = true;
+  els.quizPanel.hidden = true;
+  els.reviewPanel.hidden = true;
+  els.resultsPanel.hidden = true;
+  els.after.hidden = true;
+  els.consultPanel.hidden = true;
 }
 
 function stopTimer(){
   if(sim.timerUiId) clearInterval(sim.timerUiId);
   if(sim.autosaveId) clearInterval(sim.autosaveId);
-  sim.timerUiId=null;
-  sim.autosaveId=null;
-  els.timer.textContent='';
+  sim.timerUiId = null;
+  sim.autosaveId = null;
+  els.timer.textContent = '';
+}
+
+function scrollToQuestion(){
+  // scroll pulito verso la domanda (qid è sopra il testo)
+  els.qid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showResultsOnly(){
+  // Risultati simulazione: mostra SOLO riepilogo
+  els.qaWrap.hidden = true;
+  els.after.hidden = true;
+  els.simNav.hidden = true;
+  if(els.simBottomNav) els.simBottomNav.hidden = true;
+  els.resultsPanel.hidden = false;
+  els.resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function ensureDataset(){
@@ -99,12 +114,14 @@ function goHome(force=false){
     if(!confirm('Vuoi tornare alla Home? La sessione verrà terminata.')) return;
   }
   stopTimer();
-  mode=null; deck=[]; index=0; answeredThis=false; trainingCompletedAllNow=false;
-  sim={perScore:[],perChoice:[],flagged:[],endAt:0,timerUiId:null,autosaveId:null,finished:false};
-  resultsView={rows:[],filterChoice:'all'};
+  mode = null; deck = []; index = 0; answeredThis = false; trainingCompletedAllNow = false;
+  sim = { perScore:[], perChoice:[], flagged:[], endAt:0, timerUiId:null, autosaveId:null, finished:false };
+  resultsView = { rows:[], filterChoice:'all' };
   resetPanels();
-  els.homePanel.hidden=false;
-  els.qaWrap.hidden=false;
+  els.homePanel.hidden = false;
+  els.qaWrap.hidden = false;
+  // safety: nascondi bottom nav quando non in simulazione
+  if(els.simBottomNav) els.simBottomNav.hidden = true;
 }
 
 // ---- Review list (legacy) ----
@@ -265,12 +282,22 @@ function startReviewMode(){
 function showQuiz(){
   resetPanels();
   els.quizPanel.hidden=false;
+
+  // quando si entra in quiz, si vede la domanda
   els.qaWrap.hidden=false;
+
+  // risultati sempre nascosti finché non termini
   els.resultsPanel.hidden=true;
   els.after.hidden=true;
-  els.simNav.hidden=!(mode==='simulation' && !sim.finished);
+
+  // sim nav / bottom nav solo in simulazione non finita
+  const simActive = (mode === 'simulation' && !sim.finished);
+  els.simNav.hidden = !simActive;
+  if(els.simBottomNav) els.simBottomNav.hidden = !simActive;
+
   buildNavGrid();
   renderQuestion();
+  scrollToQuestion();
 }
 
 function renderQuestion(){
@@ -312,6 +339,12 @@ function renderQuestion(){
   }
 
   updateNavGridStyles();
+
+  // abilita/disabilita prev/next in simulazione
+  if(mode === 'simulation' && !sim.finished && els.simPrevBtn && els.simNextBtn){
+    els.simPrevBtn.disabled = (index === 0);
+    els.simNextBtn.disabled = (index === deck.length - 1);
+  }
 }
 
 function colorizeAllAnswers(){
@@ -362,6 +395,7 @@ function onAnswer(btn,q){
 
     els.after.hidden=false;
     els.simNav.hidden=true;
+    if(els.simBottomNav) els.simBottomNav.hidden = true;
     els.nextBtn.textContent=(index===deck.length-1)?'Fine':'Prossima';
   }
 
@@ -397,6 +431,7 @@ function nextTrainingLike(){
 
   index+=1;
   renderQuestion();
+  scrollToQuestion();
 }
 
 function buildNavGrid(){
@@ -410,7 +445,12 @@ function buildNavGrid(){
     b.type='button';
     b.className='navItem';
     b.textContent=String(i+1);
-    b.addEventListener('click',()=>{ index=i; renderQuestion(); saveSimState(); });
+    b.addEventListener('click',()=>{ 
+      index=i; 
+      renderQuestion(); 
+      saveSimState(); 
+      scrollToQuestion();
+    });
     els.navGrid.appendChild(b);
   }
   updateNavGridStyles();
@@ -431,11 +471,36 @@ function skipSimulation(){
   const n=deck.length;
   for(let step=1;step<=n;step++){
     const j=(index+step)%n;
-    if(!sim.perChoice[j]){ index=j; renderQuestion(); saveSimState(); return; }
+    if(!sim.perChoice[j]){
+      index=j;
+      renderQuestion();
+      saveSimState();
+      scrollToQuestion();
+      return;
+    }
   }
   index=Math.min(index+1,n-1);
   renderQuestion();
   saveSimState();
+  scrollToQuestion();
+}
+
+function simPrev(){
+  if(!(mode === 'simulation' && !sim.finished)) return;
+  if(index <= 0) return;
+  index -= 1;
+  renderQuestion();
+  saveSimState();
+  scrollToQuestion();
+}
+
+function simNext(){
+  if(!(mode === 'simulation' && !sim.finished)) return;
+  if(index >= deck.length - 1) return;
+  index += 1;
+  renderQuestion();
+  saveSimState();
+  scrollToQuestion();
 }
 
 function toggleFlag(){
@@ -488,6 +553,8 @@ function finishSimulation(){
   sim.finished=true;
   clearSimState();
 
+  if(els.simBottomNav) els.simBottomNav.hidden = true;
+
   const total=sim.perScore.reduce((a,s)=>a+(typeof s==='number'?s:0),0);
   const answeredCount=sim.perChoice.filter(Boolean).length;
   const flaggedCount=sim.flagged.filter(Boolean).length;
@@ -499,9 +566,7 @@ function finishSimulation(){
   els.simNav.hidden=true;
   els.after.hidden=true;
   els.resultsPanel.hidden=false;
-  els.qaWrap.hidden = true;
-  els.resultsPanel.scrollIntoView({ behavior:'smooth', block:'start' });
-  
+
   els.resultsSummary.innerHTML=`
     <div><strong>Punteggio:</strong> ${total.toFixed(1)} / ${deck.length}</div>
     <div><strong>Risposte date:</strong> ${answeredCount} / ${deck.length}</div>
@@ -517,13 +582,16 @@ function finishSimulation(){
 }
 
 function openSimReview(i){
+  // Mostra domanda (review) e nasconde risultati
   els.qaWrap.hidden=false;
   els.resultsPanel.hidden=true;
   els.after.hidden=false;
   els.simNav.hidden=true;
+  if(els.simBottomNav) els.simBottomNav.hidden = true;
 
   index=i;
   renderQuestion();
+  scrollToQuestion();
 
   if(els.backToResultsBtn) els.backToResultsBtn.hidden=false;
   if(els.backToResultsTopBtn) els.backToResultsTopBtn.hidden=false;
@@ -577,7 +645,6 @@ function openConsult(){
   resetPanels();
   els.consultPanel.hidden=false;
 
-  // load saved state
   const st=loadConsultState();
   consult.query = (st.query||'');
   consult.favOnly = !!st.favOnly;
@@ -588,19 +655,15 @@ function openConsult(){
   els.consultFavOnly.checked = consult.favOnly;
 
   renderConsultList();
-
-  // restore scroll position
   setTimeout(()=>{ els.consultList.scrollTop = consult.scrollTop; }, 0);
 
   if(consult.selectedId){
-    // open last selected if it still exists
     const q = dataset.find(x=>x.id===consult.selectedId);
     if(q) openConsultDetail(consult.selectedId, false);
   }
 }
 
 function closeConsult(){
-  // persist current scroll
   consult.scrollTop = els.consultList.scrollTop || 0;
   saveConsultState();
   goHome(true);
@@ -612,24 +675,19 @@ function getConsultFilteredIds(){
   const fav=loadFavSet();
   const q = normalize(consult.query).trim();
 
-  // base list ordered by id
   let ids = dataset.map(x=>x.id);
-
   if(consult.favOnly){
     ids = ids.filter(id=>fav.has(id));
   }
-
   if(!q) return ids;
 
   const isNum = /^\d+$/.test(q);
   if(isNum){
     const needle = parseInt(q,10);
-    // show exact match first if exists, else partial id contains
     if(ids.includes(needle)) return [needle];
     return ids.filter(id => String(id).includes(q));
   }
 
-  // text search: question + answers
   const out=[];
   for(const id of ids){
     const item = dataset[id-1];
@@ -674,10 +732,7 @@ function renderConsultList(){
     star.textContent = fav.has(id)?'★':'☆';
     star.title = 'Preferito';
 
-    // click row opens detail
     left.addEventListener('click', ()=> openConsultDetail(id, true));
-
-    // star toggle without opening
     star.addEventListener('click', (e)=>{
       e.stopPropagation();
       toggleFavorite(id);
@@ -686,7 +741,6 @@ function renderConsultList(){
 
     row.appendChild(left);
     row.appendChild(star);
-
     els.consultList.appendChild(row);
   }
 
@@ -699,7 +753,7 @@ function toggleFavorite(id){
   saveFavSet(fav);
 }
 
-function openConsultDetail(id, fromList){
+function openConsultDetail(id){
   consult.selectedId = id;
   saveConsultState();
 
@@ -725,40 +779,35 @@ function openConsultDetail(id, fromList){
   els.consultMid.textContent = mid;
   els.consultBad.textContent = bad;
 
-  // update star button action
   els.consultStarBtn.onclick = ()=>{
     toggleFavorite(id);
     const fav2=loadFavSet();
     els.consultStarBtn.classList.toggle('on', fav2.has(id));
     els.consultStarBtn.textContent = fav2.has(id)?'★':'☆';
-    // If in favOnly mode and user removed favorite, go back to list
     if(consult.favOnly && !fav2.has(id)){
       backToConsultList();
       renderConsultList();
     }
   };
 
-  // enable/disable prev/next
   els.consultPrevBtn.disabled = (pos<=0);
   els.consultNextBtn.disabled = (pos<0 || pos>=consult.filteredIds.length-1);
 
   els.consultPrevBtn.onclick = ()=>{
     const p=consult.filteredIds.indexOf(consult.selectedId);
-    if(p>0) openConsultDetail(consult.filteredIds[p-1], false);
+    if(p>0) openConsultDetail(consult.filteredIds[p-1]);
   };
   els.consultNextBtn.onclick = ()=>{
     const p=consult.filteredIds.indexOf(consult.selectedId);
-    if(p>=0 && p<consult.filteredIds.length-1) openConsultDetail(consult.filteredIds[p+1], false);
+    if(p>=0 && p<consult.filteredIds.length-1) openConsultDetail(consult.filteredIds[p+1]);
   };
 
-  // mobile: go to top
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function backToConsultList(){
   els.consultDetailView.hidden=true;
   els.consultListView.hidden=false;
-  // restore scroll
   setTimeout(()=>{ els.consultList.scrollTop = consult.scrollTop || 0; }, 0);
 }
 
@@ -787,6 +836,9 @@ els.addToReviewBtn.addEventListener('click', addCurrentToReview);
 els.removeFromReviewBtn.addEventListener('click', removeFromReview);
 els.backToResultsBtn.addEventListener('click', backToResults);
 els.backToResultsTopBtn.addEventListener('click', backToResults);
+
+if(els.simPrevBtn) els.simPrevBtn.addEventListener('click', simPrev);
+if(els.simNextBtn) els.simNextBtn.addEventListener('click', simNext);
 
 els.nextBtn.addEventListener('click', ()=>{
   if(mode==='training'||mode==='review') nextTrainingLike();
@@ -829,7 +881,6 @@ els.consultFavOnly.addEventListener('change', ()=>{
 });
 els.consultList.addEventListener('scroll', ()=>{
   consult.scrollTop = els.consultList.scrollTop || 0;
-  // keep it cheap: save occasionally
   saveConsultState();
 });
 
@@ -844,7 +895,6 @@ async function loadDefaultDataset(){
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
-    // order by id
     dataset = data.sort((a,b)=>a.id-b.id);
     els.datasetInfo.textContent = `Dataset caricato automaticamente: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
   }catch(err){
