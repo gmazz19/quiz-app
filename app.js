@@ -504,7 +504,17 @@ function removeCurrentFromReview(){ const q=deck[index]; const s=loadReviewSet()
 // --- Events ---
 els.homeBtn.addEventListener('click',()=>goHome(false));
 els.goTraining.addEventListener('click',startTraining);
-els.goSimulation.addEventListener('click',startSimulation);
+
+// MODIFICA: prompt resume SOLO al click su "Simulazione"
+els.goSimulation.addEventListener('click',()=>{
+  if(!ensureDataset()) return;
+
+  const resumed = tryResumeSimulationPrompt();
+  if(resumed) return; // ripresa completata, non avvia nuova simulazione
+
+  startSimulation(); // altrimenti nuova simulazione
+});
+
 els.goReview.addEventListener('click',startReviewMode);
 
 els.openReviewFromHome.addEventListener('click',openReviewPanel);
@@ -535,67 +545,3 @@ els.finishBtn.addEventListener('click',()=>{
   const flagged = sim.flagged.filter(Boolean).length;
   let msg = 'Terminare la simulazione adesso?';
   if(unanswered>0 || flagged>0){
-    msg = `Hai ancora ${unanswered} domande non risposte e ${flagged} segnate. Vuoi terminare lo stesso?`;
-  }
-  if(!confirm(msg)) return;
-  finishSimulation();
-});
-
-els.choiceFilter.addEventListener('change',()=>{
-  resultsView.filterChoice = els.choiceFilter.value;
-  renderResultsTable();
-});
-
-els.newSimBtn.addEventListener('click',()=>{ clearSimState(); startSimulation(); });
-
-els.fileInput.addEventListener('change', async (e)=>{
-  const file=e.target.files?.[0];
-  if(!file) return;
-  const text=await file.text();
-  try{
-    const data=JSON.parse(text);
-    if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
-    dataset=data.sort((a,b)=>a.id-b.id);
-    els.datasetInfo.textContent=`Dataset caricato: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
-    // Prompt resume after dataset loaded
-    tryResumeSimulationPrompt();
-    if(!els.reviewPanel.hidden) openReviewPanel();
-  }catch(err){
-    alert('Errore nel JSON: '+err.message);
-  }
-});
-
-// init
-resetPanels();
-els.homePanel.hidden=false;
-
-// --- Auto-load dataset from GitHub Pages (optional) ---
-// Metti il file "domande_297.json" nella stessa cartella di index.html
-async function loadDefaultDataset(){
-  // Se dataset è già stato caricato manualmente, non fare nulla
-  if (dataset && dataset.length) return;
-
-  try{
-    const res = await fetch('domande_297.json', { cache: 'no-store' });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    if(!Array.isArray(data)) throw new Error('Formato non valido (atteso array)');
-
-    dataset = data.sort((a,b)=>a.id-b.id);
-    els.datasetInfo.textContent =
-      `Dataset caricato automaticamente: ${dataset.length} domande (ID ${dataset[0].id}–${dataset[dataset.length-1].id})`;
-
-    // Dopo il load automatico, se c'è una simulazione salvata propone il resume
-    tryResumeSimulationPrompt();
-
-  }catch(err){
-    console.log('Auto-load dataset fallito:', err);
-    // Non blocchiamo nulla: l’utente può comunque caricare manualmente dal bottone file
-    // (opzionale) puoi mostrare un hint:
-    // els.datasetInfo.textContent = 'Carica domande_297.json (auto-load non riuscito).';
-  }
-}
-
-// Avvia auto-load all’avvio
-loadDefaultDataset();
