@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz – Esercitazione, Simulazione, Ripasso</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="appHeader">
+    <div class="headerRow">
+      <button id="homeBtn" class="ghost" title="Torna alla home">🏠 Home</button>
+      <h1>Quiz – Esercitazione • Simulazione • Ripasso</h1>
+      <div class="timer" id="timer" aria-live="polite"></div>
+    </div>
+
+    <div class="subRow">
+      <label class="btn">Carica dataset (JSON)
+        <input id="fileInput" type="file" accept="application/json" />
+      </label>
+      <span id="datasetInfo" class="muted">Carica <code>domande_297_corretto.json</code>.</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="homePanel" class="panel">
+      <h2>Scegli modalità</h2>
+      <div class="modeGrid">
+        <button id="goTraining" class="modeCard" type="button">
+          <div class="modeTitle">Esercitazione</div>
+          <div class="modeDesc">Tutte le 297 domande una volta. Esito subito dopo la risposta.</div>
+        </button>
+        <button id="goSimulation" class="modeCard" type="button">
+          <div class="modeTitle">Simulazione</div>
+          <div class="modeDesc">30 domande, 90 minuti. Esito solo alla fine.</div>
+        </button>
+        <button id="goReview" class="modeCard" type="button">
+          <div class="modeTitle">Ripasso</div>
+          <div class="modeDesc">Solo “Da rivedere”. Esito subito dopo la risposta.</div>
+        </button>
+      </div>
+      <div class="row" style="margin-top:14px;">
+        <button id="openReviewFromHome" class="secondary" type="button">Apri “Da rivedere”</button>
+        <button id="clearReviewFromHome" class="danger" type="button">Svuota “Da rivedere”</button>
+      </div>
+    </section>
+
+    <section id="quizPanel" class="panel" hidden>
+      <div id="qaWrap">
+
+        <!-- Sim nav on top in simulation -->
+        <div id="simNav" class="simNav" hidden>
+          <div class="simNavTop">
+            <button id="skipBtn" class="secondary" type="button">Salta</button>
+            <button id="flagBtn" class="secondary" type="button">🔖 Segna</button>
+            <button id="finishBtn" class="primary" type="button">Termina</button>
+          </div>
+          <div id="navGrid" class="navGrid" aria-label="Navigazione domande"></div>
+          <div class="muted" id="navHint"></div>
+        </div>
+
+        <div class="qhead">
+          <div class="qid" id="qid"></div>
+          <div class="qheadRight">
+            <div class="progress" id="progress"></div>
+            <button id="backToResultsTopBtn" class="secondary" type="button" hidden>⬅︎ Riepilogo</button>
+          </div>
+        </div>
+
+        <div class="qtext" id="qtext"></div>
+        <div class="answers" id="answers"></div>
+
+        <div class="after" id="after" hidden>
+          <div class="legend">
+            <span class="chip ok">Efficace (1)</span>
+            <span class="chip mid">Mediamente efficace (0,5)</span>
+            <span class="chip bad">Non efficace (0)</span>
+          </div>
+          <div class="row">
+            <button id="backToResultsBtn" class="secondary" type="button" hidden>⬅︎ Riepilogo</button>
+            <button id="addToReviewBtn" class="secondary" type="button">Aggiungi a “Da rivedere”</button>
+            <button id="removeFromReviewBtn" class="secondary" type="button">Rimuovi da “Da rivedere”</button>
+            <button id="openReviewBtn" class="secondary" type="button">Apri “Da rivedere”</button>
+            <button id="clearReviewBtn" class="danger" type="button">Svuota “Da rivedere”</button>
+            <button id="nextBtn" class="primary" type="button">Prossima</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="results" id="resultsPanel" hidden>
+        <div class="resultsHeader">
+          <h3 style="margin:0">Risultato simulazione</h3>
+          <div class="resultsFilters">
+            <label class="muted">Filtra Riepilogo:</label>
+            <select id="choiceFilter" class="select">
+              <option value="all">Tutte</option>
+              <option value="efficace">Efficace</option>
+              <option value="mediamente_efficace">Mediamente efficace</option>
+              <option value="non_efficace">Non efficace</option>
+              <option value="unanswered">Non risposte</option>
+            </select>
+          </div>
+        </div>
+        <div id="resultsSummary" class="summary"></div>
+        <div class="tableWrap">
+          <table class="resTable">
+            <thead>
+              <tr><th>#</th><th>ID</th><th>Scelta</th><th>Punteggio</th><th>Flag</th><th>Rivedi</th></tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="newSimBtn" class="primary" type="button">Nuova simulazione</button>
+        </div>
+      </div>
+
+    </section>
+
+    <section id="reviewPanel" class="panel" hidden>
+      <h2>Da rivedere</h2>
+      <p class="muted">Lista salvata nel browser.</p>
+      <div class="row" style="margin-bottom:10px;">
+        <button id="startReviewModeBtn" class="primary" type="button">Avvia Ripasso</button>
+        <button id="clearReviewBtn2" class="danger" type="button">Svuota</button>
+        <button id="closeReviewBtn" class="secondary" type="button">Chiudi</button>
+      </div>
+      <div id="reviewList"></div>
+    </section>
+  </main>
+
+  <footer class="footer"><p class="muted">Forza Robertaaaaa</p></footer>
+  <script src="app.js"></script>
+</body>
+</html>
