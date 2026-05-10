@@ -273,6 +273,7 @@ function startTimer(seconds){
 function startTraining(){
   if(!ensureDataset()) return;
   mode='training';
+  if (els.simBottomNav) els.simBottomNav.hidden = true;
   trainingCompletedAllNow=false;
 
   const seen = loadTrainingSeen();
@@ -306,13 +307,17 @@ function startSimulation(){
 
 function startReviewMode(){
   if(!ensureDataset()) return;
-  const set=loadReviewSet();
-  const only=dataset.filter(q=>set.has(q.id));
-  if(!only.length){ alert('“Da rivedere” è vuota.'); return; }
+  const set = loadReviewSet();
+  const only = dataset.filter(q => set.has(q.id));
+  if(!only.length){ 
+    alert('“Da rivedere” è vuota.'); 
+    return; 
+  }
 
-  mode='review';
-  deck=shuffle(only.slice());
-  index=0;
+  mode = 'review';
+  if (els.simBottomNav) els.simBottomNav.hidden = true;
+  deck = shuffle(only.slice());
+  index = 0;
   showQuiz();
 }
 
@@ -324,9 +329,12 @@ function showQuiz(){
   els.resultsPanel.hidden=true;
   els.after.hidden=true;
 
+   // safety: di default la barra in basso è nascosta
+  if (els.simBottomNav) els.simBottomNav.hidden = true;
+  
   const simActive = (mode === 'simulation' && !sim.finished);
   els.simNav.hidden = !simActive;
-  if(els.simBottomNav) els.simBottomNav.hidden = !simActive;
+  if (els.simBottomNav) els.simBottomNav.hidden = !simActive;
 
   buildNavGrid();
   renderQuestion();
