@@ -862,7 +862,7 @@
   },
   {
     "id": 42,
-    "domanda": "",
+    "domanda": "In qualità di Tecnico di Amministrazione presso una Corte di Appello, lei si sta occupando di monitorare le spese di manutenzione dell'edificio giudiziario. A metà esercizio finanziario, tuttavia, confrontando le spese sostenute con le risorse stanziate, lei rileva che due capitoli di spesa hanno già raggiunto l'ottanta per cento della disponibilità annuale, mentre restano da eseguire interventi programmati per il secondo semestre. Inoltre, una sezione della Corte ha segnalato un intervento urgente non previsto nella programmazione iniziale. Come si comporterebbe in questa situazione?",
     "risposte": [
       {
         "tipo": "efficace",
@@ -2122,7 +2122,7 @@
   },
   {
     "id": 102,
-    "domanda": "",
+    "domanda": "Nel suo ruolo di Tecnico di Amministrazione presso un Tribunale, mentre tenta di allegare una relazione istruttoria a una pratica amministrativa nel sistema informatico, compare il messaggio "Operazione non consentita dalle politiche di sicurezza dell'amministrazione". Il documento è necessario per completare un procedimento amministrativo i cui termini scadono il giorno successivo. Lei ha sempre allegato documenti con la medesima modalità senza riscontrare problemi. Come si comporterebbe in questa situazione?",
     "risposte": [
       {
         "tipo": "efficace",
@@ -3760,7 +3760,7 @@
   },
   {
     "id": 180,
-    "domanda": "",
+    "domanda": "Nel suo ruolo di Tecnico di Amministrazione presso un Tribunale, dopo aver completato un complesso prospetto riepilogativo sulle spese di giustizia richiesto dal Dirigente, lei chiude il file e si accorge di non aver verificato se il salvataggio sia avvenuto correttamente. Riaprendo il documento, constata che l'ultima versione salvata risale a diverse ore prima e non contiene le modifiche più recenti. Il Dirigente ha fissato la consegna del prospetto per la mattina successiva. Come si comporterebbe in questa situazione?",
     "risposte": [
       {
         "tipo": "efficace",
